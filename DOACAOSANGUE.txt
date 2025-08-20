@@ -1,0 +1,122 @@
+--- ANALISE DE DISPONIBILIDADE POR REGIÃO ---
+
+SELECT
+	CITY,
+	BLOOD_GROUP,
+		COUNT(*) AS TOTAL_DOADORES,
+		SUM(CASE WHEN AVAILABILITY = 'YES' THEN 1 ELSE 0 END) AS DOADORES_DISPONIVEIS,
+		ROUND((SUM(CASE WHEN AVAILABILITY = 'YES' THEN 1 ELSE 0 END)* 100.0 / COUNT (*)),2) AS PORCENTUAL_DISPONIVEL
+		FROM PUBLIC.DONOR_ID
+		GROUP BY CITY,BLOOD_GROUP
+		ORDER BY CITY, PORCENTUAL_DISPONIVEL DESC;
+
+--- TIPOS SANGUINEOS MAIS ESCASSOS POR CIDADE ---
+
+SELECT CITY, BLOOD_GROUP, COUNT(*) AS TOTAL_DOADORES,
+AVAILABILITY,
+RANK () OVER (PARTITION BY CITY ORDER BY COUNT(*) ASC)  AS RANKING_ESCASSEZ
+FROM PUBLIC.DONOR_ID
+WHERE AVAILABILITY ='YES'
+GROUP BY CITY,BLOOD_GROUP, AVAILABILITY
+ORDER BY CITY, TOTAL_DOADORES ASC;
+
+--- MAIOR NUMERO DE DOAÇÃO ---
+
+	SELECT
+		DONOR_ID,
+		NAME,
+		BLOOD_GROUP,
+		CITY,
+		NUMBER_OF_DONATION AS TOTAL_DOACOES,
+		PINTS_DONATED AS TOTAL_BOLSAS,
+		CREATED_AT AS DATA_CADASTRO,
+		CASE
+			WHEN NUMBER_OF_DONATION >= 10 THEN 'DOADOR OURO'
+			WHEN NUMBER_OF_DONATION >= 5 THEN 'DOADOR PRATA'
+
+	ELSE 'DOADOR BRONZE'
+	END AS CATEGORIA
+	FROM PUBLIC.DONOR_ID
+	WHERE AVAILABILITY = 'YES'
+	ORDER BY NUMBER_OF_DONATION DESC
+	-- LIMIT 20;
+
+--- TAXA DE RETENÇÃO DE DOADORES ---
+
+
+SELECT 
+    EXTRACT(YEAR FROM created_at) as ano_cadastro,
+    COUNT(*) as total_cadastrados,
+    SUM(CASE WHEN availability = 'Yes' THEN 1 ELSE 0 END) as ainda_ativos,
+    ROUND((SUM(CASE WHEN availability = 'Yes' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2) as taxa_retencao
+FROM public.donor_id 
+GROUP BY EXTRACT(YEAR FROM created_at)
+ORDER BY ano_cadastro;
+
+--- PREVISÃO DE DISPONIBILIDADE FUTURA ---
+
+SELECT 
+    blood_group,
+    city,
+    COUNT(*) as total_doadores,
+    AVG(months_since_first_donation) as tempo_medio_doacao,
+    AVG(number_of_donation) as media_doacoes,
+    CASE 
+        WHEN AVG(months_since_first_donation) < 12 THEN 'Alta Rotatividade'
+        WHEN AVG(months_since_first_donation) BETWEEN 12 AND 36 THEN 'Rotatividade Média'
+        ELSE 'Baixa Rotatividade'
+    END as perfil_rotatividade
+FROM public.donor_id 
+WHERE availability = 'Yes'
+GROUP BY blood_group, city
+ORDER BY blood_group, total_doadores DESC;
+
+---  IDENTIFICAÇÃO DE DOADORES INATIVOS ---
+
+SELECT 
+    donor_id,
+    name,
+    blood_group,
+    city,
+    months_since_first_donation as meses_inativo,
+    number_of_donation as total_doacoes,
+    created_at,
+    CASE 
+        WHEN months_since_first_donation > 24 THEN 'Inativo Crônico'
+        WHEN months_since_first_donation BETWEEN 12 AND 24 THEN 'Inativo Moderado'
+        ELSE 'Potencialmente Ativo'
+    END as status
+FROM public.donor_id 
+WHERE availability = 'No'
+ORDER BY months_since_first_donation DESC
+LIMIT 15;
+
+---  ANÁLISE DE SAZONALIDADE DE CADASTROS ---
+
+SELECT 
+    TO_CHAR(created_at, 'YYYY-MM') as mes_ano,
+    COUNT(*) as novos_cadastros,
+    blood_group,
+    city,
+    SUM(CASE WHEN availability = 'Yes' THEN 1 ELSE 0 END) as disponiveis_na_epoca
+FROM public.donor_id 
+GROUP BY TO_CHAR(created_at, 'YYYY-MM'), blood_group, city
+ORDER BY mes_ano DESC, novos_cadastros DESC;
+
+--- MAPA DE DISTRIBUIÇÃO CRÍTICA ---
+
+SELECT 
+    city,
+    blood_group,
+    COUNT(*) as total,
+    SUM(CASE WHEN availability = 'Yes' THEN 1 ELSE 0 END) as disponiveis,
+    CASE 
+        WHEN COUNT(*) < 5 THEN 'CRÍTICO'
+        WHEN COUNT(*) BETWEEN 5 AND 10 THEN 'ALERTA'
+        ELSE 'ESTÁVEL'
+    END as status_estoque
+FROM public.donor_id 
+GROUP BY city, blood_group
+HAVING SUM(CASE WHEN availability = 'Yes' THEN 1 ELSE 0 END) > 0
+ORDER BY status_estoque, total ASC;
+		
